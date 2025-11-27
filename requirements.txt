@@ -1,0 +1,7 @@
+django
+djangorestframework
+djangorestframework-simplejwt
+redis
+pandas
+celery
+requests

@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Django
+*.log
+*.pot
+*.pyc
+*.pyo
+*.pyd
+db.sqlite3
+media/
+staticfiles/
+local_settings.py
+
+# Migrations (optional: keep in real projects, ignore for experimental)
+# */migrations/*
+# !*/migrations/__init__.py
+
+# Virtual Environment
+venv/
+env/
+.venv/
+ENV/
+
+# IDE / Editor
+.vscode/
+*.swp
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Redis dump (if created)
+dump.rdb
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Cache
+*.cache
+*.tmp
+
+# Environment Variables / Secrets
+.env
+*.env
+.env.*
+
+# Tests / Coverage
+.coverage
+htmlcov/
+pytest_cache/
+
+# Python packaging
+build/
+dist/
+*.egg-info/
+
+# JetBrains
+.idea/
+``
+
