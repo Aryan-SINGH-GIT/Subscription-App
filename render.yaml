@@ -4,7 +4,7 @@ services:
     name: subscription-engine
     env: python
     plan: free
-    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate --noinput
     startCommand: gunicorn subscriptionEngine.wsgi:application --bind 0.0.0.0:$PORT
     envVars:
       - key: PYTHON_VERSION
@@ -23,44 +23,15 @@ services:
         value: https://subscription-engine.onrender.com
     healthCheckPath: /api/subscriptions/plans/
 
-  # Celery Worker
-  - type: worker
-    name: subscription-engine-worker
-    env: python
-    plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: celery -A subscriptionEngine worker --loglevel=info
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
-      - key: SECRET_KEY
-        generateValue: true
-      - key: DEBUG
-        value: "False"
-      - key: DATABASE_URL
-        value: ""  # Set this manually after creating PostgreSQL database
-      - key: REDIS_URL
-        value: ""  # Set this manually after creating Redis instance
-
-  # Celery Beat (Scheduler)
-  - type: worker
-    name: subscription-engine-beat
-    env: python
-    plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: celery -A subscriptionEngine beat --loglevel=info
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
-      - key: SECRET_KEY
-        generateValue: true
-      - key: DEBUG
-        value: "False"
-      - key: DATABASE_URL
-        value: ""  # Set this manually after creating PostgreSQL database
-      - key: REDIS_URL
-        value: ""  # Set this manually after creating Redis instance
-
+# Note: Background Workers don't have free tier on Render
+# Workers can be added later if needed (paid plans start at $7/month)
+# The app will work without workers, but scheduled tasks (invoices, reports) won't run automatically
+# 
+# To add workers later:
+# 1. Create Background Worker manually in Render dashboard
+# 2. Start Command: celery -A subscriptionEngine worker --loglevel=info
+# 3. For Celery Beat: celery -A subscriptionEngine beat --loglevel=info
+#
 # Note: Create PostgreSQL and Redis manually in Render dashboard (free tier available)
-# Then add DATABASE_URL and REDIS_URL environment variables to each service
+# Then add DATABASE_URL and REDIS_URL environment variables to the web service
 

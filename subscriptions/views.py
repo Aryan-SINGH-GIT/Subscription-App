@@ -14,6 +14,43 @@ class PlanListView(generics.ListAPIView):
     queryset = Plan.objects.all()
     serializer_class = PlanSerializer
     permission_classes = [permissions.AllowAny]
+    
+    def get(self, request, *args, **kwargs):
+        # Auto-run migrations if tables don't exist (for free tier without Shell)
+        try:
+            # Try to query plans - this will fail if table doesn't exist
+            Plan.objects.count()
+        except Exception:
+            # Table doesn't exist, run migrations
+            try:
+                from django.core.management import call_command
+                from django.db import connection
+                from django.conf import settings
+                
+                # Check if database is configured
+                if settings.DATABASES['default'].get('NAME'):
+                    connection.ensure_connection()
+                    logger.info("Running migrations automatically...")
+                    call_command('migrate', verbosity=1, interactive=False)
+                    
+                    # Setup demo data if no plans exist
+                    try:
+                        if Plan.objects.count() == 0:
+                            logger.info("Setting up demo data...")
+                            call_command('setup_demo_data', verbosity=0)
+                    except:
+                        pass
+            except Exception as e:
+                logger.error(f"Auto-migration failed: {e}", exc_info=True)
+                # Return error response instead of crashing
+                from rest_framework.response import Response
+                from rest_framework import status
+                return Response({
+                    "detail": "Database migrations required. Please ensure DATABASE_URL is set and database is accessible.",
+                    "error": str(e)
+                }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        
+        return super().get(request, *args, **kwargs)
 
 class SubscriptionView(APIView):
     permission_classes = [permissions.IsAuthenticated]

@@ -32,6 +32,30 @@ class ApiOverview(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
+        # Try to run migrations if tables don't exist (for free tier without Shell)
+        try:
+            from django.core.management import call_command
+            from django.db import connection
+            from django.conf import settings
+            
+            # Check if database is configured
+            if settings.DATABASES['default'].get('NAME'):
+                # Test if tables exist by trying a simple query
+                try:
+                    from subscriptions.models import Plan
+                    Plan.objects.count()  # This will fail if table doesn't exist
+                except:
+                    # Tables don't exist, run migrations
+                    try:
+                        call_command('migrate', verbosity=0, interactive=False)
+                        # Setup demo data if no plans exist
+                        if Plan.objects.count() == 0:
+                            call_command('setup_demo_data', verbosity=0)
+                    except Exception as e:
+                        pass  # Ignore migration errors in overview
+        except:
+            pass  # Ignore all errors in overview
+        
         return Response({
             "message": "Welcome to the Subscription & Entitlement Engine API",
             "endpoints": {
