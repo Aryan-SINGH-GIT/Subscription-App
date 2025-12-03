@@ -199,6 +199,11 @@ class ChangePlanView(APIView):
         from .utils import calculate_proration
         prorated_amount = calculate_proration(current_subscription, new_plan)
         
+        # Reset ALL usage counters when changing plans (new billing cycle)
+        from metering.services import reset_all_usage
+        reset_count = reset_all_usage(request.user.id)
+        logger.info(f"Reset {reset_count} usage counters for user {request.user.id} during plan change")
+        
         # Deactivate old subscription
         old_plan_name = current_subscription.plan.name
         current_subscription.active = False
@@ -247,8 +252,10 @@ class ChangePlanView(APIView):
         serializer = SubscriptionSerializer(new_subscription)
         return Response({
             **serializer.data,
-            'message': f'Successfully {action} from {old_plan_name} to {new_plan.name}',
-            'prorated_amount': str(prorated_amount)
+            'message': f'Successfully {action} from {old_plan_name} to {new_plan.name}. All usage counters have been reset!',
+            'prorated_amount': str(prorated_amount),
+            'usage_reset': True,
+            'features_reset': reset_count
         }, status=status.HTTP_200_OK)
 
 
@@ -265,15 +272,10 @@ class RenewSubscriptionView(APIView):
                 "detail": "No active subscription to renew"
             }, status=status.HTTP_404_NOT_FOUND)
         
-        # Reset usage counters for all features
-        from metering.services import reset_usage
-        from subscriptions.models import PlanFeature
-        
-        plan_features = PlanFeature.objects.filter(plan=subscription.plan)
-        reset_count = 0
-        for pf in plan_features:
-            reset_usage(request.user.id, pf.feature.code)
-            reset_count += 1
+        # Reset ALL usage counters when renewing (new billing cycle)
+        from metering.services import reset_all_usage
+        reset_count = reset_all_usage(request.user.id)
+        logger.info(f"Reset {reset_count} usage counters for user {request.user.id} during renewal")
         
         # Update subscription dates for renewal
         old_start_date = subscription.start_date

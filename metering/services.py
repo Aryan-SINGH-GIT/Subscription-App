@@ -138,6 +138,50 @@ def reset_usage(user_id, feature_code):
         logger.error(f"Unexpected error in reset_usage: {e}")
         raise
 
+def reset_all_usage(user_id):
+    """
+    Reset ALL usage counters for a user (all features).
+    This is used when changing plans or renewing subscriptions.
+    
+    Args:
+        user_id: The user ID to reset usage for
+        
+    Returns:
+        Number of usage counters reset
+    """
+    try:
+        redis_client = _ensure_redis()
+        # Find all usage keys for this user
+        # Pattern: usage:user_id:*
+        pattern = f"usage:{user_id}:*"
+        keys = redis_client.keys(pattern)
+        
+        if keys:
+            # Delete all usage keys for this user
+            # If there are many keys, delete in batches to avoid blocking
+            if len(keys) > 100:
+                # Delete in batches of 100
+                deleted = 0
+                for i in range(0, len(keys), 100):
+                    batch = keys[i:i+100]
+                    redis_client.delete(*batch)
+                    deleted += len(batch)
+                logger.info(f"Reset {deleted} usage counters for user {user_id} (batched)")
+                return deleted
+            else:
+                redis_client.delete(*keys)
+                logger.info(f"Reset {len(keys)} usage counters for user {user_id}")
+                return len(keys)
+        else:
+            logger.info(f"No usage counters found for user {user_id}")
+            return 0
+    except redis.RedisError as e:
+        logger.error(f"Redis error in reset_all_usage: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in reset_all_usage: {e}")
+        raise
+
 def check_rate_limit(rate_limit_key, max_calls, window_seconds):
     """
     Check if rate limit is exceeded using sliding window algorithm.
