@@ -37,17 +37,17 @@ urlpatterns = [
     path('frontend/plans.html', TemplateView.as_view(template_name='frontend/plans.html'), name='frontend-plans'),
     path('frontend/invoices.html', TemplateView.as_view(template_name='frontend/invoices.html'), name='frontend-invoices'),
     path('frontend/webhooks.html', TemplateView.as_view(template_name='frontend/webhooks.html'), name='frontend-webhooks'),
+    
+    # Serve frontend static files (CSS, JS) - MUST be before static() to work in production
+    # These paths match the relative paths in HTML (css/styles.css, js/api.js)
+    path('css/<path:path>', serve, {'document_root': os.path.join(settings.BASE_DIR, 'frontend', 'css')}),
+    path('js/<path:path>', serve, {'document_root': os.path.join(settings.BASE_DIR, 'frontend', 'js')}),
+    path('frontend/css/<path:path>', serve, {'document_root': os.path.join(settings.BASE_DIR, 'frontend', 'css')}),
+    path('frontend/js/<path:path>', serve, {'document_root': os.path.join(settings.BASE_DIR, 'frontend', 'js')}),
 ]
 
-# Serve static files (CSS, JS) from frontend directory
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-    # Serve frontend static files in development
-    frontend_static = os.path.join(settings.BASE_DIR, 'frontend')
-    urlpatterns += [
-        path('frontend/css/<path:path>', serve, {'document_root': os.path.join(frontend_static, 'css')}),
-        path('frontend/js/<path:path>', serve, {'document_root': os.path.join(frontend_static, 'js')}),
-    ]
+# Serve media files
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 
 
