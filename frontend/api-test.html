@@ -31,49 +31,91 @@
 
     <div class="container" style="padding: var(--space-xl) 0;">
         <div class="page-header animate-fadeInUp">
-            <h1>API Testing</h1>
+            <h1>API Usage Testing</h1>
             <p class="page-subtitle">
-                Test API endpoints and view responses
+                Test API usage tracking, rate limiting, and subscription limits
             </p>
         </div>
 
-        <!-- API Test Form -->
+        <!-- Current Usage Summary -->
         <div class="card animate-fadeInUp" style="margin-bottom: var(--space-lg);">
             <div class="card-body">
-                <h3 style="margin-bottom: var(--space-md);">Test API Endpoint</h3>
+                <div class="flex items-center justify-between" style="margin-bottom: var(--space-md);">
+                    <h3>Current Usage Summary</h3>
+                    <button class="btn btn-secondary btn-sm" onclick="loadUsageSummary()">
+                        <span>↻</span> Refresh
+                    </button>
+                </div>
+                <div id="usage-summary-container">
+                    <div class="shimmer" style="height: 150px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Test Actions -->
+        <div class="card animate-fadeInUp" style="margin-bottom: var(--space-lg);">
+            <div class="card-body">
+                <h3 style="margin-bottom: var(--space-md);">Quick Test Actions</h3>
+                <div class="grid grid-2" style="gap: var(--space-md);">
+                    <button class="btn btn-primary" onclick="testSingleCall()">
+                        <span>📞</span> Make 1 API Call
+                    </button>
+                    <button class="btn btn-primary" onclick="testMultipleCalls(5)">
+                        <span>📞</span> Make 5 API Calls
+                    </button>
+                    <button class="btn btn-primary" onclick="testMultipleCalls(10)">
+                        <span>📞</span> Make 10 API Calls
+                    </button>
+                    <button class="btn btn-warning" onclick="testRateLimit()">
+                        <span>⚡</span> Test Rate Limit
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Manual API Call -->
+        <div class="card animate-fadeInUp" style="margin-bottom: var(--space-lg);">
+            <div class="card-body">
+                <h3 style="margin-bottom: var(--space-md);">Manual API Call</h3>
                 <div class="form-group">
-                    <label class="form-label" for="api-method">Method</label>
-                    <select id="api-method" class="form-select">
-                        <option value="GET">GET</option>
-                        <option value="POST">POST</option>
-                        <option value="PUT">PUT</option>
-                        <option value="PATCH">PATCH</option>
-                        <option value="DELETE">DELETE</option>
-                    </select>
+                    <label class="form-label" for="feature-code">Feature Code</label>
+                    <input type="text" id="feature-code" class="form-input" 
+                           placeholder="api_calls" 
+                           value="api_calls">
+                    <small style="color: var(--text-secondary); display: block; margin-top: var(--space-xs);">
+                        Feature code to track usage for (e.g., "api_calls", "api_requests")
+                    </small>
                 </div>
                 <div class="form-group">
-                    <label class="form-label" for="api-endpoint">Endpoint</label>
-                    <input type="text" id="api-endpoint" class="form-input" 
-                           placeholder="/api/subscriptions/plans/" 
-                           value="/api/subscriptions/plans/">
+                    <label class="form-label" for="event-id">Event ID (Optional)</label>
+                    <input type="text" id="event-id" class="form-input" 
+                           placeholder="Leave empty for auto-generated">
+                    <small style="color: var(--text-secondary); display: block; margin-top: var(--space-xs);">
+                        Unique event ID for idempotency. If not provided, one will be auto-generated.
+                    </small>
                 </div>
                 <div class="form-group">
-                    <label class="form-label" for="api-body">Request Body (JSON)</label>
-                    <textarea id="api-body" class="form-input" rows="6" 
-                              placeholder='{"key": "value"}'></textarea>
+                    <label class="form-label" for="metadata">Metadata (Optional JSON)</label>
+                    <textarea id="metadata" class="form-input" rows="4" 
+                              placeholder='{"source": "api-test", "test": true}'></textarea>
                 </div>
-                <button class="btn btn-primary" onclick="testAPI()">
-                    <span>🚀</span> Send Request
+                <button class="btn btn-primary" onclick="makeManualCall()">
+                    <span>🚀</span> Record Usage Event
                 </button>
             </div>
         </div>
 
-        <!-- Response Display -->
+        <!-- Test Results -->
         <div class="card animate-fadeInUp">
             <div class="card-body">
-                <h3 style="margin-bottom: var(--space-md);">Response</h3>
-                <div id="response-container">
-                    <p style="color: var(--text-secondary);">Send a request to see the response here.</p>
+                <div class="flex items-center justify-between" style="margin-bottom: var(--space-md);">
+                    <h3>Test Results</h3>
+                    <button class="btn btn-secondary btn-sm" onclick="clearResults()">
+                        <span>🗑️</span> Clear
+                    </button>
+                </div>
+                <div id="test-results-container">
+                    <p style="color: var(--text-secondary);">Test results will appear here...</p>
                 </div>
             </div>
         </div>
@@ -83,6 +125,8 @@
     <script src="/js/utils.js"></script>
     <script src="/js/auth.js"></script>
     <script>
+        let testResults = [];
+
         // Check authentication
         if (!requireAuth()) {
             throw new Error('Not authenticated');
@@ -98,95 +142,358 @@
             }
         }
 
-        // Test API endpoint
-        async function testAPI() {
-            const method = document.getElementById('api-method').value;
-            const endpoint = document.getElementById('api-endpoint').value;
-            const bodyText = document.getElementById('api-body').value.trim();
-            const container = document.getElementById('response-container');
-
-            // Show loading
-            container.innerHTML = '<div class="shimmer" style="height: 200px;"></div>';
+        // Load usage summary
+        async function loadUsageSummary() {
+            const container = document.getElementById('usage-summary-container');
+            container.innerHTML = '<div class="shimmer" style="height: 150px;"></div>';
 
             try {
-                let body = null;
-                if (bodyText) {
-                    try {
-                        body = JSON.parse(bodyText);
-                    } catch (e) {
-                        throw new Error('Invalid JSON in request body');
-                    }
+                // Get subscription info
+                let subscription = null;
+                try {
+                    subscription = await api.get('/subscriptions/subscribe/');
+                } catch (error) {
+                    // No subscription
                 }
 
-                const url = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-                const fullUrl = `${window.location.origin}${url}`;
-
-                const options = {
-                    method: method,
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
-                };
-
-                // Add auth token if available
-                const token = localStorage.getItem('access_token');
-                if (token) {
-                    options.headers['Authorization'] = `Bearer ${token}`;
-                }
-
-                if (body && ['POST', 'PUT', 'PATCH'].includes(method)) {
-                    options.body = JSON.stringify(body);
-                }
-
-                const startTime = Date.now();
-                const response = await fetch(fullUrl, options);
-                const endTime = Date.now();
-                const responseTime = endTime - startTime;
-
-                let responseData;
-                const contentType = response.headers.get('content-type');
-                if (contentType && contentType.includes('application/json')) {
-                    responseData = await response.json();
-                } else {
-                    responseData = await response.text();
-                }
-
-                // Display response
-                const statusClass = response.ok ? 'success' : 'error';
-                container.innerHTML = `
-                    <div style="margin-bottom: var(--space-md);">
-                        <div class="flex items-center gap-2" style="margin-bottom: var(--space-sm);">
-                            <span class="badge badge-${statusClass}">${response.status} ${response.statusText}</span>
-                            <span style="color: var(--text-secondary); font-size: 0.875rem;">
-                                Response time: ${responseTime}ms
-                            </span>
+                // Get usage summary
+                const summary = await api.get('/metering/summary/');
+                
+                if (!subscription || !subscription.plan) {
+                    container.innerHTML = `
+                        <div class="card" style="background: var(--warning-light); border: 1px solid var(--warning);">
+                            <div class="card-body text-center">
+                                <p style="color: var(--warning); margin: 0;">
+                                    <strong>No active subscription found.</strong><br>
+                                    Please subscribe to a plan first to test API usage.
+                                </p>
+                                <a href="plans.html" class="btn btn-primary" style="margin-top: var(--space-md);">
+                                    View Plans
+                                </a>
+                            </div>
                         </div>
-                        <div style="background: var(--bg-secondary); padding: var(--space-md); border-radius: var(--radius-md); overflow-x: auto;">
-                            <pre style="margin: 0; color: var(--text-primary); font-size: 0.875rem; white-space: pre-wrap; word-wrap: break-word;">${JSON.stringify(responseData, null, 2)}</pre>
+                    `;
+                    return;
+                }
+
+                const plan = subscription.plan;
+                const usage = summary.features || [];
+                
+                let usageHtml = `
+                    <div style="margin-bottom: var(--space-md);">
+                        <div class="flex items-center gap-2">
+                            <strong>Plan:</strong> <span>${plan.name}</span>
+                            <span class="badge badge-primary">₹${plan.price}/month</span>
                         </div>
                     </div>
                 `;
 
-                if (response.ok) {
-                    showToast('Request successful!', 'success');
+                if (usage.length === 0) {
+                    usageHtml += `
+                        <div style="color: var(--text-secondary); text-align: center; padding: var(--space-lg);">
+                            <p>No usage recorded yet. Make some API calls to see usage tracking!</p>
+                        </div>
+                    `;
                 } else {
-                    showToast(`Request failed: ${response.status}`, 'error');
+                    usageHtml += '<div class="grid grid-2" style="gap: var(--space-md);">';
+                    usage.forEach(feature => {
+                        const limit = feature.limit === -1 ? 'Unlimited' : feature.limit;
+                        const currentUsage = feature.current_usage || 0;
+                        const remaining = feature.remaining === 'Unlimited' ? 'Unlimited' : 
+                                         (typeof feature.remaining === 'number' ? feature.remaining : 
+                                         (feature.limit === -1 ? 'Unlimited' : Math.max(0, feature.limit - currentUsage)));
+                        const usagePercent = feature.limit === -1 ? 0 : 
+                                           (currentUsage / feature.limit) * 100;
+                        const isOverLimit = feature.limit !== -1 && currentUsage > feature.limit;
+                        
+                        usageHtml += `
+                            <div class="card" style="background: var(--bg-secondary);">
+                                <div class="card-body">
+                                    <h4 style="margin-bottom: var(--space-sm);">${feature.feature_name || feature.feature_code}</h4>
+                                    <div style="margin-bottom: var(--space-sm);">
+                                        <div class="flex items-center justify-between" style="margin-bottom: var(--space-xs);">
+                                            <span style="color: var(--text-secondary);">Usage:</span>
+                                            <strong style="color: ${isOverLimit ? 'var(--error)' : 'var(--text-primary)'};">
+                                                ${currentUsage} / ${limit}
+                                            </strong>
+                                        </div>
+                                        <div class="flex items-center justify-between">
+                                            <span style="color: var(--text-secondary);">Remaining:</span>
+                                            <strong>${remaining}</strong>
+                                        </div>
+                                    </div>
+                                    ${feature.limit !== -1 ? `
+                                        <div style="background: var(--bg-primary); height: 8px; border-radius: 4px; overflow: hidden; margin-top: var(--space-sm);">
+                                            <div style="background: ${isOverLimit ? 'var(--error)' : 'var(--primary)'}; 
+                                                       height: 100%; width: ${Math.min(100, usagePercent)}%; 
+                                                       transition: width 0.3s;"></div>
+                                        </div>
+                                    ` : ''}
+                                    ${plan.rate_limit > 0 ? `
+                                        <div style="margin-top: var(--space-sm); padding-top: var(--space-sm); border-top: 1px solid var(--border);">
+                                            <small style="color: var(--text-secondary);">
+                                                Rate Limit: ${plan.rate_limit} calls per ${plan.rate_limit_window}s
+                                            </small>
+                                        </div>
+                                    ` : ''}
+                                    ${plan.overage_price > 0 && feature.limit !== -1 ? `
+                                        <div style="margin-top: var(--space-sm); padding-top: var(--space-sm); border-top: 1px solid var(--border);">
+                                            <small style="color: var(--text-secondary);">
+                                                Overage: ₹${plan.overage_price} per extra call
+                                            </small>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        `;
+                    });
+                    usageHtml += '</div>';
                 }
+
+                container.innerHTML = usageHtml;
             } catch (error) {
                 container.innerHTML = `
-                    <div style="color: var(--error);">
-                        <p><strong>Error:</strong> ${error.message}</p>
-                        <pre style="background: var(--bg-secondary); padding: var(--space-md); border-radius: var(--radius-md); margin-top: var(--space-sm); overflow-x: auto;">${error.stack || error}</pre>
+                    <div class="card" style="background: var(--error-light); border: 1px solid var(--error);">
+                        <div class="card-body">
+                            <p style="color: var(--error); margin: 0;">
+                                <strong>Error loading usage summary:</strong> ${error.message}
+                            </p>
+                        </div>
                     </div>
                 `;
-                showToast('Request failed: ' + error.message, 'error');
             }
         }
 
-        // Load user info on page load
+        // Add test result
+        function addTestResult(result) {
+            testResults.unshift(result);
+            if (testResults.length > 20) {
+                testResults = testResults.slice(0, 20);
+            }
+            renderTestResults();
+        }
+
+        // Render test results
+        function renderTestResults() {
+            const container = document.getElementById('test-results-container');
+            
+            if (testResults.length === 0) {
+                container.innerHTML = '<p style="color: var(--text-secondary);">Test results will appear here...</p>';
+                return;
+            }
+
+            let html = '<div style="display: flex; flex-direction: column; gap: var(--space-md);">';
+            testResults.forEach((result, index) => {
+                const statusClass = result.success ? 'success' : 'error';
+                const time = new Date(result.timestamp).toLocaleTimeString();
+                
+                html += `
+                    <div class="card" style="background: var(--bg-secondary); border-left: 4px solid var(--${statusClass});">
+                        <div class="card-body">
+                            <div class="flex items-center justify-between" style="margin-bottom: var(--space-sm);">
+                                <div class="flex items-center gap-2">
+                                    <span class="badge badge-${statusClass}">${result.status || (result.success ? 'Success' : 'Failed')}</span>
+                                    <span style="color: var(--text-secondary); font-size: 0.875rem;">${time}</span>
+                                </div>
+                                <span style="color: var(--text-secondary); font-size: 0.875rem;">
+                                    ${result.responseTime}ms
+                                </span>
+                            </div>
+                            <div style="margin-bottom: var(--space-xs);">
+                                <strong>${result.action}</strong>
+                            </div>
+                            ${result.message ? `<p style="color: var(--text-secondary); font-size: 0.875rem; margin: var(--space-xs) 0;">${result.message}</p>` : ''}
+                            ${result.data ? `
+                                <div style="background: var(--bg-primary); padding: var(--space-sm); border-radius: var(--radius-sm); margin-top: var(--space-sm); overflow-x: auto;">
+                                    <pre style="margin: 0; color: var(--text-primary); font-size: 0.75rem; white-space: pre-wrap;">${JSON.stringify(result.data, null, 2)}</pre>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        // Clear test results
+        function clearResults() {
+            testResults = [];
+            renderTestResults();
+        }
+
+        // Test single API call
+        async function testSingleCall() {
+            await makeUsageCall('api_calls', null, 'Single API call test');
+        }
+
+        // Test multiple API calls
+        async function testMultipleCalls(count) {
+            showToast(`Making ${count} API calls...`, 'info');
+            for (let i = 0; i < count; i++) {
+                await makeUsageCall('api_calls', null, `API call ${i + 1} of ${count}`);
+                // Small delay to avoid overwhelming the server
+                if (i < count - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+            }
+            showToast(`Completed ${count} API calls`, 'success');
+            await loadUsageSummary();
+        }
+
+        // Test rate limiting
+        async function testRateLimit() {
+            showToast('Testing rate limit (making rapid calls)...', 'info');
+            const results = [];
+            for (let i = 0; i < 10; i++) {
+                const result = await makeUsageCall('api_calls', null, `Rate limit test call ${i + 1}`);
+                results.push(result);
+                // No delay - rapid calls to test rate limiting
+            }
+            
+            const blocked = results.filter(r => !r.success && r.status === 429).length;
+            if (blocked > 0) {
+                showToast(`Rate limit working! ${blocked} calls were blocked`, 'success');
+            } else {
+                showToast('Rate limit not triggered (plan may not have rate limiting)', 'info');
+            }
+            await loadUsageSummary();
+        }
+
+        // Make a usage call
+        async function makeUsageCall(featureCode, eventId, action) {
+            const startTime = Date.now();
+            
+            try {
+                const body = {
+                    feature_code: featureCode,
+                };
+                
+                if (eventId) {
+                    body.event_id = eventId;
+                }
+
+                const response = await api.post('/metering/event/', body);
+                const endTime = Date.now();
+                const responseTime = endTime - startTime;
+
+                addTestResult({
+                    success: true,
+                    status: 201,
+                    action: action || 'API Call',
+                    message: `Usage: ${response.usage}/${response.limit === 'Unlimited' ? '∞' : response.limit}, Remaining: ${response.remaining}`,
+                    data: response,
+                    responseTime: responseTime,
+                    timestamp: new Date().toISOString()
+                });
+
+                return { success: true, response, responseTime };
+            } catch (error) {
+                const endTime = Date.now();
+                const responseTime = endTime - startTime;
+                
+                let status = 'Error';
+                let message = error.message;
+                
+                if (error.response) {
+                    status = error.response.status || 'Error';
+                    message = error.response.detail || error.message;
+                }
+
+                addTestResult({
+                    success: false,
+                    status: status,
+                    action: action || 'API Call',
+                    message: message,
+                    data: error.response?.data || { error: error.message },
+                    responseTime: responseTime,
+                    timestamp: new Date().toISOString()
+                });
+
+                return { success: false, error, responseTime };
+            }
+        }
+
+        // Make manual API call
+        async function makeManualCall() {
+            const featureCode = document.getElementById('feature-code').value.trim();
+            const eventId = document.getElementById('event-id').value.trim() || null;
+            const metadataText = document.getElementById('metadata').value.trim();
+
+            if (!featureCode) {
+                showToast('Please enter a feature code', 'error');
+                return;
+            }
+
+            let metadata = {};
+            if (metadataText) {
+                try {
+                    metadata = JSON.parse(metadataText);
+                } catch (e) {
+                    showToast('Invalid JSON in metadata field', 'error');
+                    return;
+                }
+            }
+
+            showToast('Recording usage event...', 'info');
+            
+            const startTime = Date.now();
+            try {
+                const body = {
+                    feature_code: featureCode,
+                    metadata: metadata
+                };
+                
+                if (eventId) {
+                    body.event_id = eventId;
+                }
+
+                const response = await api.post('/metering/event/', body);
+                const endTime = Date.now();
+                const responseTime = endTime - startTime;
+
+                addTestResult({
+                    success: true,
+                    status: 201,
+                    action: 'Manual API Call',
+                    message: `Usage recorded: ${response.usage}/${response.limit === 'Unlimited' ? '∞' : response.limit}, Remaining: ${response.remaining}`,
+                    data: response,
+                    responseTime: responseTime,
+                    timestamp: new Date().toISOString()
+                });
+
+                showToast('Usage event recorded successfully!', 'success');
+                await loadUsageSummary();
+            } catch (error) {
+                const endTime = Date.now();
+                const responseTime = endTime - startTime;
+                
+                let status = 'Error';
+                let message = error.message;
+                
+                if (error.response) {
+                    status = error.response.status || 'Error';
+                    message = error.response.detail || error.message;
+                }
+
+                addTestResult({
+                    success: false,
+                    status: status,
+                    action: 'Manual API Call',
+                    message: message,
+                    data: error.response?.data || { error: error.message },
+                    responseTime: responseTime,
+                    timestamp: new Date().toISOString()
+                });
+
+                showToast(`Error: ${message}`, 'error');
+            }
+        }
+
+        // Load data on page load
         loadUserInfo();
+        loadUsageSummary();
     </script>
 </body>
 
 </html>
-
