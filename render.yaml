@@ -3,7 +3,7 @@ services:
   - type: web
     name: subscription-engine
     env: python
-    plan: starter
+    plan: free
     buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
     startCommand: gunicorn subscriptionEngine.wsgi:application --bind 0.0.0.0:$PORT
     envVars:
@@ -16,14 +16,9 @@ services:
       - key: ALLOWED_HOSTS
         value: subscription-engine.onrender.com
       - key: DATABASE_URL
-        fromDatabase:
-          name: subscription-engine-db
-          property: connectionString
+        value: ""  # Set this manually after creating PostgreSQL database
       - key: REDIS_URL
-        fromService:
-          name: subscription-engine-redis
-          type: redis
-          property: connectionString
+        value: ""  # Set this manually after creating Redis instance
       - key: CORS_ALLOWED_ORIGINS
         value: https://subscription-engine.onrender.com
     healthCheckPath: /api/subscriptions/plans/
@@ -32,7 +27,7 @@ services:
   - type: worker
     name: subscription-engine-worker
     env: python
-    plan: starter
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: celery -A subscriptionEngine worker --loglevel=info
     envVars:
@@ -43,20 +38,15 @@ services:
       - key: DEBUG
         value: "False"
       - key: DATABASE_URL
-        fromDatabase:
-          name: subscription-engine-db
-          property: connectionString
+        value: ""  # Set this manually after creating PostgreSQL database
       - key: REDIS_URL
-        fromService:
-          name: subscription-engine-redis
-          type: redis
-          property: connectionString
+        value: ""  # Set this manually after creating Redis instance
 
   # Celery Beat (Scheduler)
   - type: worker
     name: subscription-engine-beat
     env: python
-    plan: starter
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: celery -A subscriptionEngine beat --loglevel=info
     envVars:
@@ -67,18 +57,10 @@ services:
       - key: DEBUG
         value: "False"
       - key: DATABASE_URL
-        fromDatabase:
-          name: subscription-engine-db
-          property: connectionString
+        value: ""  # Set this manually after creating PostgreSQL database
       - key: REDIS_URL
-        fromService:
-          name: subscription-engine-redis
-          type: redis
-          property: connectionString
+        value: ""  # Set this manually after creating Redis instance
 
-databases:
-  - name: subscription-engine-db
-    plan: starter
-    databaseName: subscription_engine
-    user: subscription_user
+# Note: Create PostgreSQL and Redis manually in Render dashboard (free tier available)
+# Then add DATABASE_URL and REDIS_URL environment variables to each service
 
