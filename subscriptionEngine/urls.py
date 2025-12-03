@@ -30,13 +30,27 @@ urlpatterns = [
     path('api/metering/', include('metering.urls')),
     path('api/', ApiOverview.as_view(), name='api-overview'),
     
-    # Frontend routes
+    # Frontend routes - support both with and without /frontend/ prefix
     path('', TemplateView.as_view(template_name='frontend/index.html'), name='home'),
+    path('index.html', TemplateView.as_view(template_name='frontend/index.html'), name='index'),
     path('frontend/', TemplateView.as_view(template_name='frontend/index.html'), name='frontend-home'),
     path('frontend/index.html', TemplateView.as_view(template_name='frontend/index.html'), name='frontend-index'),
+    
+    # Plans page
+    path('plans.html', TemplateView.as_view(template_name='frontend/plans.html'), name='plans'),
     path('frontend/plans.html', TemplateView.as_view(template_name='frontend/plans.html'), name='frontend-plans'),
+    
+    # Invoices page
+    path('invoices.html', TemplateView.as_view(template_name='frontend/invoices.html'), name='invoices'),
     path('frontend/invoices.html', TemplateView.as_view(template_name='frontend/invoices.html'), name='frontend-invoices'),
+    
+    # Webhooks page
+    path('webhooks.html', TemplateView.as_view(template_name='frontend/webhooks.html'), name='webhooks'),
     path('frontend/webhooks.html', TemplateView.as_view(template_name='frontend/webhooks.html'), name='frontend-webhooks'),
+    
+    # API Testing page
+    path('api-test.html', TemplateView.as_view(template_name='frontend/api-test.html'), name='api-test'),
+    path('frontend/api-test.html', TemplateView.as_view(template_name='frontend/api-test.html'), name='frontend-api-test'),
     
     # Serve frontend static files (CSS, JS) - MUST be before static() to work in production
     # These paths match the relative paths in HTML (css/styles.css, js/api.js)

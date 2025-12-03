@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Testing - Subscription Engine</title>
+    <link rel="stylesheet" href="/css/styles.css">
+    <link rel="stylesheet" href="/css/animations.css">
+</head>
+
+<body>
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="container navbar-content">
+            <div class="navbar-brand">
+                <a href="index.html" style="text-decoration: none; color: inherit;">
+                    <h2>Subscription Engine</h2>
+                </a>
+            </div>
+            <ul class="navbar-menu">
+                <li><a href="index.html">Dashboard</a></li>
+                <li><a href="webhooks.html">Webhooks</a></li>
+                <li><a href="invoices.html">Invoices</a></li>
+                <li><a href="api-test.html" class="active">API Testing</a></li>
+                <li><span id="user-display" style="color: var(--text-secondary);"></span></li>
+                <li><button class="btn btn-secondary btn-sm" onclick="logout()">Logout</button></li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="container" style="padding: var(--space-xl) 0;">
+        <div class="page-header animate-fadeInUp">
+            <h1>API Testing</h1>
+            <p class="page-subtitle">
+                Test API endpoints and view responses
+            </p>
+        </div>
+
+        <!-- API Test Form -->
+        <div class="card animate-fadeInUp" style="margin-bottom: var(--space-lg);">
+            <div class="card-body">
+                <h3 style="margin-bottom: var(--space-md);">Test API Endpoint</h3>
+                <div class="form-group">
+                    <label class="form-label" for="api-method">Method</label>
+                    <select id="api-method" class="form-select">
+                        <option value="GET">GET</option>
+                        <option value="POST">POST</option>
+                        <option value="PUT">PUT</option>
+                        <option value="PATCH">PATCH</option>
+                        <option value="DELETE">DELETE</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="api-endpoint">Endpoint</label>
+                    <input type="text" id="api-endpoint" class="form-input" 
+                           placeholder="/api/subscriptions/plans/" 
+                           value="/api/subscriptions/plans/">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="api-body">Request Body (JSON)</label>
+                    <textarea id="api-body" class="form-input" rows="6" 
+                              placeholder='{"key": "value"}'></textarea>
+                </div>
+                <button class="btn btn-primary" onclick="testAPI()">
+                    <span>🚀</span> Send Request
+                </button>
+            </div>
+        </div>
+
+        <!-- Response Display -->
+        <div class="card animate-fadeInUp">
+            <div class="card-body">
+                <h3 style="margin-bottom: var(--space-md);">Response</h3>
+                <div id="response-container">
+                    <p style="color: var(--text-secondary);">Send a request to see the response here.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script src="/js/utils.js"></script>
+    <script src="/js/auth.js"></script>
+    <script>
+        // Check authentication
+        if (!requireAuth()) {
+            throw new Error('Not authenticated');
+        }
+
+        // Load user info
+        async function loadUserInfo() {
+            try {
+                const user = await api.get('/auth/profile/');
+                document.getElementById('user-display').textContent = `👤 ${user.username}`;
+            } catch (error) {
+                console.error('Failed to load user info:', error);
+            }
+        }
+
+        // Test API endpoint
+        async function testAPI() {
+            const method = document.getElementById('api-method').value;
+            const endpoint = document.getElementById('api-endpoint').value;
+            const bodyText = document.getElementById('api-body').value.trim();
+            const container = document.getElementById('response-container');
+
+            // Show loading
+            container.innerHTML = '<div class="shimmer" style="height: 200px;"></div>';
+
+            try {
+                let body = null;
+                if (bodyText) {
+                    try {
+                        body = JSON.parse(bodyText);
+                    } catch (e) {
+                        throw new Error('Invalid JSON in request body');
+                    }
+                }
+
+                const url = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+                const fullUrl = `${window.location.origin}${url}`;
+
+                const options = {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                };
+
+                // Add auth token if available
+                const token = localStorage.getItem('access_token');
+                if (token) {
+                    options.headers['Authorization'] = `Bearer ${token}`;
+                }
+
+                if (body && ['POST', 'PUT', 'PATCH'].includes(method)) {
+                    options.body = JSON.stringify(body);
+                }
+
+                const startTime = Date.now();
+                const response = await fetch(fullUrl, options);
+                const endTime = Date.now();
+                const responseTime = endTime - startTime;
+
+                let responseData;
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    responseData = await response.json();
+                } else {
+                    responseData = await response.text();
+                }
+
+                // Display response
+                const statusClass = response.ok ? 'success' : 'error';
+                container.innerHTML = `
+                    <div style="margin-bottom: var(--space-md);">
+                        <div class="flex items-center gap-2" style="margin-bottom: var(--space-sm);">
+                            <span class="badge badge-${statusClass}">${response.status} ${response.statusText}</span>
+                            <span style="color: var(--text-secondary); font-size: 0.875rem;">
+                                Response time: ${responseTime}ms
+                            </span>
+                        </div>
+                        <div style="background: var(--bg-secondary); padding: var(--space-md); border-radius: var(--radius-md); overflow-x: auto;">
+                            <pre style="margin: 0; color: var(--text-primary); font-size: 0.875rem; white-space: pre-wrap; word-wrap: break-word;">${JSON.stringify(responseData, null, 2)}</pre>
+                        </div>
+                    </div>
+                `;
+
+                if (response.ok) {
+                    showToast('Request successful!', 'success');
+                } else {
+                    showToast(`Request failed: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                container.innerHTML = `
+                    <div style="color: var(--error);">
+                        <p><strong>Error:</strong> ${error.message}</p>
+                        <pre style="background: var(--bg-secondary); padding: var(--space-md); border-radius: var(--radius-md); margin-top: var(--space-sm); overflow-x: auto;">${error.stack || error}</pre>
+                    </div>
+                `;
+                showToast('Request failed: ' + error.message, 'error');
+            }
+        }
+
+        // Load user info on page load
+        loadUserInfo();
+    </script>
+</body>
+
+</html>
+
