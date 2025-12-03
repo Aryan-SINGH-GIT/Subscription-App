@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subscription Engine - Dashboard</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/animations.css">
+</head>
+
+<body>
+    <!-- Login/Register Section (shown when not authenticated) -->
+    <div id="auth-section" class="auth-container hidden">
+        <div class="auth-card card card-glass animate-scaleIn">
+            <div class="card-header text-center">
+                <h1 class="navbar-brand" style="font-size: 2rem; margin-bottom: 0.5rem;">Subscription Engine</h1>
+                <p class="page-subtitle">Manage your API subscriptions</p>
+            </div>
+
+            <!-- Login Form -->
+            <div id="login-form">
+                <form onsubmit="handleLogin(event)">
+                    <div class="form-group">
+                        <label class="form-label" for="login-username">Username</label>
+                        <input type="text" id="login-username" class="form-input" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="login-password">Password</label>
+                        <input type="password" id="login-password" class="form-input" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">
+                        Login
+                    </button>
+                </form>
+                <p class="text-center mt-2" style="color: var(--text-secondary);">
+                    Don't have an account?
+                    <a href="#" onclick="showRegister(); return false;">Register</a>
+                </p>
+            </div>
+
+            <!-- Register Form -->
+            <div id="register-form" class="hidden">
+                <form onsubmit="handleRegister(event)">
+                    <div class="form-group">
+                        <label class="form-label" for="register-username">Username</label>
+                        <input type="text" id="register-username" class="form-input" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="register-email">Email</label>
+                        <input type="email" id="register-email" class="form-input" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="register-password">Password</label>
+                        <input type="password" id="register-password" class="form-input" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">
+                        Register
+                    </button>
+                </form>
+                <p class="text-center mt-2" style="color: var(--text-secondary);">
+                    Already have an account?
+                    <a href="#" onclick="showLogin(); return false;">Login</a>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard Section (shown when authenticated) -->
+    <div id="dashboard-section" class="hidden">
+        <!-- Navbar -->
+        <nav class="navbar">
+            <div class="container navbar-content">
+                <div class="navbar-brand">Subscription Engine</div>
+                <ul class="navbar-menu">
+                    <li><a href="index.html" class="active">Dashboard</a></li>
+                    <li><a href="webhooks.html">Webhooks</a></li>
+                    <li><a href="invoices.html">Invoices</a></li>
+                    <li><a href="api-test.html">API Testing</a></li>
+                    <li><span id="user-display" style="color: var(--text-secondary);"></span></li>
+                    <li><button class="btn btn-secondary btn-sm" onclick="logout()">Logout</button></li>
+                </ul>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <div class="container">
+            <div class="page-header">
+                <h1 class="page-title animate-fadeInDown">Dashboard</h1>
+                <p class="page-subtitle animate-fadeInDown" style="animation-delay: 0.1s;">
+                    Monitor your subscription and API usage
+                </p>
+            </div>
+
+            <!-- Subscription Info -->
+            <div class="card animate-fadeInUp" id="subscription-card" style="margin-bottom: var(--space-lg);">
+                <div class="card-header">
+                    <h2 class="card-title">Current Subscription</h2>
+                </div>
+                <div class="card-body" id="subscription-info">
+                    <div class="shimmer" style="height: 60px; border-radius: var(--radius-md);"></div>
+                </div>
+            </div>
+
+            <!-- Usage Summary -->
+            <div class="card animate-fadeInUp" style="animation-delay: 0.1s;">
+                <div class="card-header flex justify-between items-center">
+                    <h2 class="card-title">Usage Summary</h2>
+                    <button class="btn btn-secondary btn-sm" onclick="loadUsageSummary()">
+                        <span>↻</span> Refresh
+                    </button>
+                </div>
+                <div id="usage-summary">
+                    <div class="shimmer" style="height: 200px; border-radius: var(--radius-md);"></div>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="grid grid-3 mt-3">
+                <a href="webhooks.html" class="card card-glass hover-lift" style="text-decoration: none;">
+                    <div class="card-body text-center">
+                        <div style="font-size: 2.5rem; margin-bottom: var(--space-md);">🔔</div>
+                        <h3 style="color: var(--text-primary); margin-bottom: var(--space-sm);">Webhooks</h3>
+                        <p style="color: var(--text-secondary); font-size: 0.875rem;">Configure webhook notifications
+                        </p>
+                    </div>
+                </a>
+
+                <a href="invoices.html" class="card card-glass hover-lift" style="text-decoration: none;">
+                    <div class="card-body text-center">
+                        <div style="font-size: 2.5rem; margin-bottom: var(--space-md);">📄</div>
+                        <h3 style="color: var(--text-primary); margin-bottom: var(--space-sm);">Invoices</h3>
+                        <p style="color: var(--text-secondary); font-size: 0.875rem;">View and download invoices</p>
+                    </div>
+                </a>
+
+                <a href="api-test.html" class="card card-glass hover-lift" style="text-decoration: none;">
+                    <div class="card-body text-center">
+                        <div style="font-size: 2.5rem; margin-bottom: var(--space-md);">📊</div>
+                        <h3 style="color: var(--text-primary); margin-bottom: var(--space-sm);">API Testing</h3>
+                        <p style="color: var(--text-secondary); font-size: 0.875rem;">Test API endpoints</p>
+                    </div>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/auth.js"></script>
+    <script>
+        // Toggle between login and register
+        function showRegister() {
+            document.getElementById('login-form').classList.add('hidden');
+            document.getElementById('register-form').classList.remove('hidden');
+        }
+
+        function showLogin() {
+            document.getElementById('register-form').classList.add('hidden');
+            document.getElementById('login-form').classList.remove('hidden');
+        }
+
+        // Handle login
+        async function handleLogin(event) {
+            event.preventDefault();
+            const btn = event.target.querySelector('button[type="submit"]');
+            showLoading(btn);
+
+            const username = document.getElementById('login-username').value;
+            const password = document.getElementById('login-password').value;
+
+            const result = await login(username, password);
+            hideLoading(btn);
+
+            if (result.success) {
+                showToast('Login successful!', 'success');
+                location.reload();
+            } else {
+                showToast(result.error || 'Login failed', 'error');
+            }
+        }
+
+        // Handle register
+        async function handleRegister(event) {
+            event.preventDefault();
+            const btn = event.target.querySelector('button[type="submit"]');
+            showLoading(btn);
+
+            const username = document.getElementById('register-username').value;
+            const email = document.getElementById('register-email').value;
+            const password = document.getElementById('register-password').value;
+
+            const result = await register(username, email, password);
+            hideLoading(btn);
+
+            if (result.success) {
+                showToast('Registration successful!', 'success');
+                location.reload();
+            } else {
+                showToast(result.error || 'Registration failed', 'error');
+            }
+        }
+
+        // Load subscription info
+        async function loadSubscriptionInfo() {
+            const container = document.getElementById('subscription-info');
+            container.innerHTML = '<div class="shimmer" style="height: 60px; border-radius: var(--radius-md);"></div>';
+
+            try {
+                // Get active subscription
+                const response = await api.get('/subscriptions/subscribe/');
+
+                if (response && response.plan) {
+                    container.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <h3 style="color: var(--text-primary); font-size: 1.25rem; font-weight: 600; margin-bottom: var(--space-xs);">
+                                    ${response.plan.name}
+                                </h3>
+                                <p style="color: var(--text-secondary); font-size: 0.9375rem;">
+                                    ${formatCurrency(response.plan.price)} / ${response.plan.billing_period}
+                                </p>
+                            </div>
+                            <div>
+                                <span class="badge badge-success" style="font-size: 0.875rem;">Active</span>
+                            </div>
+                        </div>
+                        <div style="margin-top: var(--space-md); padding-top: var(--space-md); border-top: 1px solid var(--border-color);">
+                            <div class="flex justify-between items-center" style="font-size: 0.875rem;">
+                                <div>
+                                    <span style="color: var(--text-secondary);">Start Date:</span>
+                                    <span style="color: var(--text-primary);">${formatDate(response.start_date)}</span>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button class="btn btn-secondary btn-sm" onclick="location.href='plans.html'">Change Plan</button>
+                                    <button class="btn btn-primary btn-sm" onclick="renewSubscription()">Renew</button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = `
+                        <div style="text-align: center; padding: var(--space-lg);">
+                            <div style="font-size: 3rem; margin-bottom: var(--space-md); opacity: 0.3;">📦</div>
+                            <h3 style="color: var(--text-primary); margin-bottom: var(--space-sm);">No Active Subscription</h3>
+                            <p style="color: var(--text-secondary); margin-bottom: var(--space-md);">
+                                Subscribe to a plan to start using the service. An invoice will be generated automatically.
+                            </p>
+                            <a href="plans.html" class="btn btn-primary">
+                                Browse Plans & Subscribe
+                            </a>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                // Handle 404 or "No active subscription" errors gracefully
+                if (error.message.includes('404') || error.message.includes('No active subscription') || error.message.includes('Not Found')) {
+                    container.innerHTML = `
+                        <div style="text-align: center; padding: var(--space-lg);">
+                            <div style="font-size: 3rem; margin-bottom: var(--space-md); opacity: 0.3;">📦</div>
+                            <h3 style="color: var(--text-primary); margin-bottom: var(--space-sm);">No Active Subscription</h3>
+                            <p style="color: var(--text-secondary); margin-bottom: var(--space-md);">
+                                Subscribe to a plan to start using the service. An invoice will be generated automatically.
+                            </p>
+                            <a href="plans.html" class="btn btn-primary">
+                                Browse Plans & Subscribe
+                            </a>
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = `
+                        <div style="text-align: center; padding: var(--space-lg);">
+                            <p style="color: var(--error);">Failed to load subscription: ${error.message}</p>
+                            <button class="btn btn-secondary btn-sm mt-2" onclick="loadSubscriptionInfo()">
+                                Try Again
+                            </button>
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        // Renew subscription
+        async function renewSubscription() {
+            if (!confirm('Are you sure you want to renew your subscription? This will reset your usage limits.')) {
+                return;
+            }
+
+            showToast('Renewing subscription...', 'info');
+
+            try {
+                const response = await api.post('/subscriptions/renew/');
+                showToast(response.message, 'success');
+                // Refresh data
+                await Promise.all([
+                    loadSubscriptionInfo(),
+                    loadUsageSummary()
+                ]);
+            } catch (error) {
+                showToast('Failed to renew: ' + error.message, 'error');
+            }
+        }
+
+        // Load usage summary
+        async function loadUsageSummary() {
+            const container = document.getElementById('usage-summary');
+            container.innerHTML = '<div class="shimmer" style="height: 200px; border-radius: var(--radius-md);"></div>';
+
+            try {
+                const data = await api.get('/metering/summary/');
+
+                if (!data.features || data.features.length === 0) {
+                    container.innerHTML = `
+                        <div style="text-align: center; padding: var(--space-xl);">
+                            <p style="color: var(--text-secondary); margin-bottom: var(--space-md);">
+                                ${data.message || 'No usage data available'}
+                            </p>
+                            ${data.message && data.message.includes('No active subscription') ? 
+                                '<a href="plans.html" class="btn btn-primary btn-sm">Subscribe to a Plan</a>' : 
+                                ''
+                            }
+                        </div>
+                    `;
+                    return;
+                }
+
+                container.innerHTML = data.features.map(feature => `
+                    <div class="card-body" style="border-bottom: 1px solid var(--border-color); padding: var(--space-md) 0;">
+                        <div class="flex justify-between items-center mb-1">
+                            <h4 style="color: var(--text-primary); font-weight: 600;">${feature.feature_name}</h4>
+                            <span style="color: var(--text-secondary);">
+                                ${feature.current_usage} / ${feature.limit === -1 ? '∞' : feature.limit}
+                            </span>
+                        </div>
+                        <div style="background: var(--bg-elevated); height: 8px; border-radius: 9999px; overflow: hidden;">
+                            <div style="
+                                background: linear-gradient(90deg, var(--primary-500), var(--accent-500));
+                                height: 100%;
+                                width: ${feature.limit === -1 ? 0 : Math.min((feature.current_usage / feature.limit) * 100, 100)}%;
+                                transition: width 0.5s ease;
+                            "></div>
+                        </div>
+                        <p style="color: var(--text-tertiary); font-size: 0.8125rem; margin-top: var(--space-xs);">
+                            ${feature.remaining === 'Unlimited' ? 'Unlimited' : `${feature.remaining} remaining`}
+                        </p>
+                    </div>
+                `).join('');
+            } catch (error) {
+                container.innerHTML = `<p style="color: var(--error); text-align: center; padding: var(--space-xl);">Failed to load usage data: ${error.message}</p>`;
+            }
+        }
+
+        // Initialize dashboard
+        async function initDashboard() {
+            // Always check authentication state on page load
+            let authenticated = isAuthenticated();
+            
+            if (authenticated) {
+                // User is authenticated - show dashboard
+                document.getElementById('auth-section').classList.add('hidden');
+                document.getElementById('dashboard-section').classList.remove('hidden');
+
+                // Get user info
+                try {
+                    const user = await getCurrentUser();
+                    if (user) {
+                        document.getElementById('user-display').textContent = user.username;
+                    }
+                } catch (error) {
+                    // If getting user fails, token might be invalid - clear token
+                    console.error('Failed to get user, clearing token:', error);
+                    api.removeToken();
+                    authenticated = false;
+                }
+
+                // Load subscription info and usage summary only if still authenticated
+                if (authenticated && isAuthenticated()) {
+                    await Promise.all([
+                        loadSubscriptionInfo(),
+                        loadUsageSummary()
+                    ]);
+                }
+            }
+            
+            // If not authenticated (or auth failed), show login form
+            if (!authenticated || !isAuthenticated()) {
+                document.getElementById('dashboard-section').classList.add('hidden');
+                document.getElementById('auth-section').classList.remove('hidden');
+                // Make sure login form is visible (not register form)
+                document.getElementById('login-form').classList.remove('hidden');
+                document.getElementById('register-form').classList.add('hidden');
+            }
+        }
+
+        // Run on page load
+        initDashboard();
+    </script>
+</body>
+
+</html>

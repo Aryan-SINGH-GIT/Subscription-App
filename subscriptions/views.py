@@ -2,8 +2,13 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.utils import timezone
+from django.db import transaction
+import logging
 from .models import Plan, Subscription
 from .serializers import PlanSerializer, SubscriptionSerializer
+from .utils import calculate_subscription_end_date
+
+logger = logging.getLogger(__name__)
 
 class PlanListView(generics.ListAPIView):
     queryset = Plan.objects.all()
@@ -20,22 +25,63 @@ class SubscriptionView(APIView):
         serializer = SubscriptionSerializer(subscription)
         return Response(serializer.data)
 
+    @transaction.atomic
     def post(self, request):
         # Subscribe
         serializer = SubscriptionSerializer(data=request.data)
         if serializer.is_valid():
-            # Check if user already has active subscription
-            if Subscription.objects.filter(user=request.user, active=True).exists():
-                return Response({"detail": "User already has an active subscription"}, status=status.HTTP_400_BAD_REQUEST)
+            # Use select_for_update to prevent race conditions
+            # Check if user already has active subscription atomically
+            existing = Subscription.objects.filter(
+                user=request.user, 
+                active=True
+            ).select_for_update().first()
+            
+            if existing:
+                return Response(
+                    {"detail": "User already has an active subscription"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             
             subscription = serializer.save(user=request.user)
             
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            # Calculate and set end_date if not provided
+            if not subscription.end_date:
+                subscription.end_date = calculate_subscription_end_date(subscription)
+                subscription.save()
+            
+            # Create invoice for new subscription
+            invoice = None
+            try:
+                from metering.invoice_utils import create_subscription_invoice
+                invoice = create_subscription_invoice(subscription, invoice_type='subscription')
+                if invoice:
+                    logger.info(f"Created invoice {invoice.invoice_number} for new subscription")
+            except Exception as e:
+                logger.error(f"Failed to create invoice for new subscription: {e}", exc_info=True)
+                # Don't fail subscription creation if invoice generation fails
+            
+            response_data = serializer.data
+            # Include invoice information in response
+            if invoice:
+                from metering.serializers import InvoiceListSerializer
+                response_data['invoice'] = InvoiceListSerializer(invoice).data
+                response_data['message'] = f'Successfully subscribed to {subscription.plan.name}! Invoice has been generated.'
+            else:
+                response_data['message'] = f'Successfully subscribed to {subscription.plan.name}!'
+            
+            return Response(response_data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    @transaction.atomic
     def put(self, request):
-        # Upgrade/Downgrade
-        subscription = Subscription.objects.filter(user=request.user, active=True).first()
+        # Upgrade/Downgrade - This method is deprecated in favor of ChangePlanView
+        # Keeping for backward compatibility but redirecting to ChangePlanView logic
+        subscription = Subscription.objects.filter(
+            user=request.user, 
+            active=True
+        ).select_for_update().first()
+        
         if not subscription:
             return Response({"detail": "No active subscription"}, status=status.HTTP_404_NOT_FOUND)
         
@@ -48,15 +94,21 @@ class SubscriptionView(APIView):
         except Plan.DoesNotExist:
             return Response({"detail": "Plan not found"}, status=status.HTTP_404_NOT_FOUND)
 
+        # Check if trying to switch to the same plan
+        if new_plan.id == subscription.plan.id:
+            return Response({
+                "detail": "You are already subscribed to this plan"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         from .utils import calculate_proration
         
         prorated_amount = calculate_proration(subscription, new_plan)
         
-        # In a real app, we would charge the user here.
-        # For now, we just record the change.
-        
+        # Update subscription
         old_plan_name = subscription.plan.name
         subscription.plan = new_plan
+        # Recalculate end_date for new plan
+        subscription.end_date = calculate_subscription_end_date(subscription)
         subscription.save()
         
         # Notify the user
@@ -77,9 +129,14 @@ class ChangePlanView(APIView):
     """Change subscription plan (upgrade or downgrade)"""
     permission_classes = [permissions.IsAuthenticated]
     
+    @transaction.atomic
     def post(self, request):
-        # Get current subscription
-        current_subscription = Subscription.objects.filter(user=request.user, active=True).first()
+        # Get current subscription with lock to prevent race conditions
+        current_subscription = Subscription.objects.filter(
+            user=request.user, 
+            active=True
+        ).select_for_update().first()
+        
         if not current_subscription:
             return Response({
                 "detail": "No active subscription. Please subscribe to a plan first."
@@ -110,13 +167,27 @@ class ChangePlanView(APIView):
         current_subscription.active = False
         current_subscription.save()
         
-        # Create new subscription
+        # Create new subscription with calculated end_date
         new_subscription = Subscription.objects.create(
             user=request.user,
             plan=new_plan,
             active=True,
-            start_date=timezone.now()
+            start_date=timezone.now(),
+            end_date=calculate_subscription_end_date(
+                Subscription(plan=new_plan, start_date=timezone.now())
+            )
         )
+        
+        # Create invoice for plan change (if prorated amount is positive)
+        if prorated_amount > 0:
+            try:
+                from metering.invoice_utils import create_subscription_invoice
+                invoice = create_subscription_invoice(new_subscription, invoice_type='upgrade')
+                if invoice:
+                    logger.info(f"Created upgrade invoice {invoice.invoice_number}")
+            except Exception as e:
+                logger.error(f"Failed to create invoice for plan change: {e}", exc_info=True)
+                # Don't fail plan change if invoice generation fails
         
         # Determine if upgrade or downgrade
         is_upgrade = new_plan.price > current_subscription.plan.price
@@ -148,6 +219,7 @@ class RenewSubscriptionView(APIView):
     """Renew current subscription and reset usage counters"""
     permission_classes = [permissions.IsAuthenticated]
     
+    @transaction.atomic
     def post(self, request):
         # Get current subscription
         subscription = Subscription.objects.filter(user=request.user, active=True).first()
@@ -166,9 +238,23 @@ class RenewSubscriptionView(APIView):
             reset_usage(request.user.id, pf.feature.code)
             reset_count += 1
         
-        # Update subscription start date
+        # Update subscription dates for renewal
+        old_start_date = subscription.start_date
         subscription.start_date = timezone.now()
+        # Recalculate end_date for renewed period
+        subscription.end_date = calculate_subscription_end_date(subscription)
         subscription.save()
+        
+        # Create invoice for renewal
+        invoice = None
+        try:
+            from metering.invoice_utils import create_subscription_invoice
+            invoice = create_subscription_invoice(subscription, invoice_type='renewal')
+            if invoice:
+                logger.info(f"Created renewal invoice {invoice.invoice_number}")
+        except Exception as e:
+            logger.error(f"Failed to create invoice for renewal: {e}", exc_info=True)
+            # Don't fail renewal if invoice generation fails
         
         # Notify user
         from core.utils import notify_user
@@ -180,12 +266,21 @@ class RenewSubscriptionView(APIView):
             'billing_period': subscription.plan.billing_period,
             'start_date': subscription.start_date.isoformat(),
             'features_reset': reset_count,
+            'invoice_id': invoice.id if invoice else None,
+            'invoice_number': invoice.invoice_number if invoice else None,
             'message': f'Successfully renewed {subscription.plan.name}. All usage counters have been reset!'
         })
         
         serializer = SubscriptionSerializer(subscription)
-        return Response({
+        response_data = {
             **serializer.data,
             'message': f'Successfully renewed {subscription.plan.name}. All usage counters have been reset!',
             'features_reset': reset_count
-        }, status=status.HTTP_200_OK)
+        }
+        
+        # Include invoice information in response
+        if invoice:
+            from metering.serializers import InvoiceListSerializer
+            response_data['invoice'] = InvoiceListSerializer(invoice).data
+        
+        return Response(response_data, status=status.HTTP_200_OK)

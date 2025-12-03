@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from rest_framework.validators import UniqueValidator
+from django.core.validators import URLValidator
+from django.core.exceptions import ValidationError
 
 User = get_user_model()
 
@@ -67,7 +69,22 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
 class UserProfileSerializer(serializers.ModelSerializer):
     """Serializer for user profile updates"""
+    webhook_url = serializers.URLField(required=False, allow_blank=True, allow_null=True)
+    
     class Meta:
         model = User
         fields = ('id', 'username', 'email', 'webhook_url')
         read_only_fields = ('id', 'username')  # Username cannot be changed
+    
+    def validate_webhook_url(self, value):
+        """Validate webhook URL format"""
+        if value:
+            validator = URLValidator()
+            try:
+                validator(value)
+                # Ensure it's HTTP or HTTPS
+                if not value.startswith(('http://', 'https://')):
+                    raise serializers.ValidationError("Webhook URL must use http:// or https://")
+            except ValidationError:
+                raise serializers.ValidationError("Invalid URL format")
+        return value

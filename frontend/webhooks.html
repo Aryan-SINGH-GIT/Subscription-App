@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webhooks - Subscription Engine</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/animations.css">
+</head>
+
+<body>
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="container navbar-content">
+            <div class="navbar-brand">Subscription Engine</div>
+            <ul class="navbar-menu">
+                <li><a href="index.html">Dashboard</a></li>
+                <li><a href="webhooks.html" class="active">Webhooks</a></li>
+                <li><a href="invoices.html">Invoices</a></li>
+                <li><a href="api-test.html">API Testing</a></li>
+                <li><span id="user-display" style="color: var(--text-secondary);"></span></li>
+                <li><button class="btn btn-secondary btn-sm" onclick="logout()">Logout</button></li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="page-header">
+            <h1 class="page-title animate-fadeInDown">Webhook Configuration</h1>
+            <p class="page-subtitle animate-fadeInDown" style="animation-delay: 0.1s;">
+                Configure webhook notifications for subscription events
+            </p>
+        </div>
+
+        <div class="grid grid-2" style="align-items: start;">
+            <!-- Webhook URL Configuration -->
+            <div class="card animate-fadeInUp">
+                <div class="card-header">
+                    <h2 class="card-title">Webhook URL</h2>
+                </div>
+                <div class="card-body">
+                    <form onsubmit="updateWebhookURL(event)">
+                        <div class="form-group">
+                            <label class="form-label" for="webhook-url">
+                                Webhook Endpoint URL
+                            </label>
+                            <input type="url" id="webhook-url" class="form-input"
+                                placeholder="https://webhook.site/your-unique-id" required>
+                            <p style="color: var(--text-tertiary); font-size: 0.8125rem; margin-top: var(--space-xs);">
+                                Events will be sent to this URL via HTTP POST
+                            </p>
+                        </div>
+
+                        <div class="flex gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                Save URL
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="testWebhook()">
+                                Test Webhook
+                            </button>
+                        </div>
+                    </form>
+
+                    <div id="webhook-status" class="mt-2"></div>
+                </div>
+            </div>
+
+            <!-- Webhook Info -->
+            <div class="card card-glass animate-fadeInUp" style="animation-delay: 0.1s;">
+                <div class="card-header">
+                    <h2 class="card-title">Webhook Events</h2>
+                </div>
+                <div class="card-body">
+                    <p style="color: var(--text-secondary); margin-bottom: var(--space-md);">
+                        Your webhook will receive notifications for:
+                    </p>
+
+                    <div style="display: flex; flex-direction: column; gap: var(--space-md);">
+                        <div class="flex items-center gap-2">
+                            <span class="badge badge-primary">limit_reached</span>
+                            <span style="color: var(--text-secondary); font-size: 0.875rem;">
+                                When API usage limit is exceeded
+                            </span>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <span class="badge badge-info">invoice_generated</span>
+                            <span style="color: var(--text-secondary); font-size: 0.875rem;">
+                                Monthly invoice generated
+                            </span>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <span class="badge badge-info">daily_usage_report</span>
+                            <span style="color: var(--text-secondary); font-size: 0.875rem;">
+                                Daily usage summary report
+                            </span>
+                        </div>
+                    </div>
+
+                    <div
+                        style="margin-top: var(--space-lg); padding-top: var(--space-lg); border-top: 1px solid var(--border-color);">
+                        <h4 style="color: var(--text-primary); margin-bottom: var(--space-sm);">Need a webhook URL?</h4>
+                        <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: var(--space-sm);">
+                            Use <a href="https://webhook.site" target="_blank">webhook.site</a> to get a free testing
+                            URL
+                        </p>
+                        <a href="https://webhook.site" target="_blank" class="btn btn-secondary btn-sm">
+                            Get Webhook URL →
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Webhook Activity (Example) -->
+        <div class="card mt-3 animate-fadeInUp" style="animation-delay: 0.2s;">
+            <div class="card-header">
+                <h2 class="card-title">Webhook Activity</h2>
+            </div>
+            <div id="webhook-activity">
+                <div class="card-body" style="text-align: center; color: var(--text-secondary);">
+                    <p>Webhook events will appear here when triggered</p>
+                    <p style="font-size: 0.875rem; margin-top: var(--space-sm);">
+                        Configure your webhook URL above to start receiving events
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/auth.js"></script>
+    <script>
+        // Check authentication
+        if (!requireAuth()) {
+            throw new Error('Not authenticated');
+        }
+
+        // Load webhook configuration
+        async function loadWebhookConfig() {
+            try {
+                const user = await api.get('/auth/profile/');
+                document.getElementById('user-display').textContent = user.username;
+
+                if (user.webhook_url) {
+                    document.getElementById('webhook-url').value = user.webhook_url;
+                    document.getElementById('webhook-status').innerHTML = `
+                        <div class="card" style="background: var(--bg-elevated); padding: var(--space-md); border-color: var(--success);">
+                            <div class="flex items-center gap-2">
+                                <span style="color: var(--success);">✓</span>
+                                <span style="color: var(--text-primary); font-weight: 500;">Webhook configured</span>
+                            </div>
+                            <p style="color: var(--text-secondary); font-size: 0.875rem; margin-top: var(--space-xs);">
+                                ${user.webhook_url}
+                            </p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                showToast('Failed to load webhook configuration', 'error');
+            }
+        }
+
+        // Update webhook URL
+        async function updateWebhookURL(event) {
+            event.preventDefault();
+            const btn = event.target.querySelector('button[type="submit"]');
+            showLoading(btn);
+
+            const webhookURL = document.getElementById('webhook-url').value;
+
+            if (!isValidURL(webhookURL)) {
+                showToast('Please enter a valid URL', 'error');
+                hideLoading(btn);
+                return;
+            }
+
+            try {
+                await api.patch('/auth/profile/', { webhook_url: webhookURL });
+                showToast('Webhook URL updated successfully', 'success');
+                await loadWebhookConfig();
+            } catch (error) {
+                showToast('Failed to update webhook URL: ' + error.message, 'error');
+            }
+
+            hideLoading(btn);
+        }
+
+        // Test webhook
+        async function testWebhook() {
+            const webhookURL = document.getElementById('webhook-url').value;
+
+            if (!webhookURL || !isValidURL(webhookURL)) {
+                showToast('Please enter a valid webhook URL first', 'warning');
+                return;
+            }
+
+            // Make sure webhook URL is saved first
+            try {
+                await api.patch('/auth/profile/', { webhook_url: webhookURL });
+            } catch (error) {
+                showToast('Failed to save webhook URL: ' + error.message, 'error');
+                return;
+            }
+
+            showToast('Sending test webhook...', 'info');
+
+            try {
+                // Use backend endpoint to send webhook (avoids CORS issues)
+                const response = await api.post('/auth/test-webhook/', {});
+
+                if (response.status === 'success') {
+                    showToast('Test webhook sent successfully! Check your webhook endpoint.', 'success');
+                    addWebhookActivity('test_webhook', 'Test webhook sent successfully', 'success');
+                } else {
+                    showToast('Webhook endpoint returned an error', 'warning');
+                    addWebhookActivity('test_webhook', 'Test failed', 'error');
+                }
+            } catch (error) {
+                showToast('Failed to send test webhook: ' + error.message, 'error');
+                addWebhookActivity('test_webhook', 'Test failed: ' + error.message, 'error');
+            }
+        }
+
+        // Add webhook activity to log
+        function addWebhookActivity(eventType, description, status) {
+            const container = document.getElementById('webhook-activity');
+
+            if (container.querySelector('p')) {
+                container.innerHTML = '';
+            }
+
+            const activity = document.createElement('div');
+            activity.className = 'card-body animate-fadeInUp';
+            activity.style.borderBottom = '1px solid var(--border-color)';
+            activity.innerHTML = `
+                <div class="flex justify-between items-center">
+                    <div>
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="badge badge-${status === 'success' ? 'success' : 'error'}">${eventType}</span>
+                            <span style="color: var(--text-secondary); font-size: 0.875rem;">
+                                ${formatRelativeTime(new Date().toISOString())}
+                            </span>
+                        </div>
+                        <p style="color: var(--text-primary);">${description}</p>
+                    </div>
+                    <span style="font-size: 1.5rem;">
+                        ${status === 'success' ? '✓' : '✕'}
+                    </span>
+                </div>
+            `;
+
+            container.prepend(activity);
+        }
+
+        // Initialize
+        loadWebhookConfig();
+    </script>
+</body>
+
+</html>

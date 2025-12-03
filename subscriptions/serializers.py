@@ -19,7 +19,10 @@ class PlanSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Plan
-        fields = ['id', 'name', 'price', 'billing_period', 'features']
+        fields = [
+            'id', 'name', 'price', 'billing_period', 'features',
+            'overage_price', 'rate_limit', 'rate_limit_window'
+        ]
 
 class SubscriptionSerializer(serializers.ModelSerializer):
     plan = PlanSerializer(read_only=True)

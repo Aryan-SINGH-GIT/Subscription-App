@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoices - Subscription Engine</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/animations.css">
+</head>
+
+<body>
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="container navbar-content">
+            <div class="navbar-brand">Subscription Engine</div>
+            <ul class="navbar-menu">
+                <li><a href="index.html">Dashboard</a></li>
+                <li><a href="webhooks.html">Webhooks</a></li>
+                <li><a href="invoices.html" class="active">Invoices</a></li>
+                <li><a href="api-test.html">API Testing</a></li>
+                <li><span id="user-display" style="color: var(--text-secondary);"></span></li>
+                <li><button class="btn btn-secondary btn-sm" onclick="logout()">Logout</button></li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="page-header">
+            <h1 class="page-title animate-fadeInDown">Invoices</h1>
+            <p class="page-subtitle animate-fadeInDown" style="animation-delay: 0.1s;">
+                View and download your billing invoices
+            </p>
+        </div>
+
+        <!-- Filters -->
+        <div class="card animate-fadeInUp" style="margin-bottom: var(--space-lg);">
+            <div class="card-body">
+                <div class="flex gap-2 items-center">
+                    <div class="form-group" style="margin: 0; flex: 1;">
+                        <label class="form-label" for="filter-status">Status</label>
+                        <select id="filter-status" class="form-select" onchange="loadInvoices()">
+                            <option value="">All Statuses</option>
+                            <option value="finalized">Finalized</option>
+                            <option value="paid">Paid</option>
+                            <option value="draft">Draft</option>
+                            <option value="void">Void</option>
+                        </select>
+                    </div>
+
+                    <button class="btn btn-secondary" onclick="loadInvoices()" style="margin-top: 1.7rem;">
+                        <span>↻</span> Refresh
+                    </button>
+                    
+                    <button class="btn btn-primary" onclick="generateTestInvoice()" style="margin-top: 1.7rem;">
+                        <span>➕</span> Generate Test Invoice
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Invoices List -->
+        <div id="invoices-container">
+            <div class="shimmer" style="height: 300px; border-radius: var(--radius-lg);"></div>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/auth.js"></script>
+    <script>
+        // Check authentication
+        if (!requireAuth()) {
+            throw new Error('Not authenticated');
+        }
+
+        // Load user info
+        async function loadUserInfo() {
+            try {
+                const user = await api.get('/auth/profile/');
+                document.getElementById('user-display').textContent = user.username;
+            } catch (error) {
+                console.error('Failed to load user info:', error);
+            }
+        }
+
+        // Load invoices
+        async function loadInvoices() {
+            const container = document.getElementById('invoices-container');
+            container.innerHTML = '<div class="shimmer" style="height: 300px; border-radius: var(--radius-lg);"></div>';
+
+            const status = document.getElementById('filter-status').value;
+            const endpoint = status ? `/metering/invoices/?status=${status}` : '/metering/invoices/';
+
+            try {
+                const response = await api.get(endpoint);
+                
+                // Handle paginated response (DRF returns {results: [], count: N, next: null, previous: null})
+                const invoices = response.results || response;
+
+                if (!invoices || (Array.isArray(invoices) && invoices.length === 0)) {
+                    container.innerHTML = `
+                        <div class="card">
+                            <div class="card-body text-center" style="padding: var(--space-2xl);">
+                                <div style="font-size: 4rem; margin-bottom: var(--space-md); opacity: 0.3;">📄</div>
+                                <h3 style="color: var(--text-primary); margin-bottom: var(--space-sm);">No invoices found</h3>
+                                <p style="color: var(--text-secondary);">
+                                    ${status ? 'No invoices with the selected status' : 'Invoices will appear here once generated'}
+                                </p>
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // Ensure invoices is an array
+                if (!Array.isArray(invoices)) {
+                    throw new Error('Invalid response format: expected array or paginated results');
+                }
+
+                container.innerHTML = `
+                    <div class="grid grid-2">
+                        ${invoices.map((invoice, index) => `
+                            <div class="card hover-lift animate-fadeInUp stagger-item" style="animation-delay: ${index * 0.05}s;">
+                                <div class="card-header flex justify-between items-center">
+                                    <h3 class="card-title" style="margin: 0;">${invoice.invoice_number}</h3>
+                                    ${getStatusBadge(invoice.status)}
+                                </div>
+                                <div class="card-body">
+                                    <div class="flex justify-between mb-2">
+                                        <span style="color: var(--text-secondary);">Date:</span>
+                                        <span style="color: var(--text-primary); font-weight: 500;">
+                                            ${formatDate(invoice.invoice_date)}
+                                        </span>
+                                    </div>
+                                    
+                                    <div class="flex justify-between mb-2">
+                                        <span style="color: var(--text-secondary);">Period:</span>
+                                        <span style="color: var(--text-primary);">
+                                            ${new Date(invoice.period_start).toLocaleDateString()} - ${new Date(invoice.period_end).toLocaleDateString()}
+                                        </span>
+                                    </div>
+                                    
+                                    <div class="flex justify-between mb-2">
+                                        <span style="color: var(--text-secondary);">Plan:</span>
+                                        <span style="color: var(--text-primary); font-weight: 500;">
+                                            ${invoice.plan_name || 'N/A'}
+                                        </span>
+                                    </div>
+                                    
+                                    <div style="border-top: 1px solid var(--border-color); margin: var(--space-md) 0; padding-top: var(--space-md);">
+                                        <div class="flex justify-between items-center">
+                                            <span style="color: var(--text-primary); font-weight: 600; font-size: 1.125rem;">
+                                                Total: ${formatCurrency(invoice.total)}
+                                            </span>
+                                            <button 
+                                                class="btn btn-primary btn-sm"
+                                                onclick="downloadInvoice(${invoice.id}, '${invoice.invoice_number}')"
+                                            >
+                                                <span>⬇</span> Download PDF
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } catch (error) {
+                container.innerHTML = `
+                    <div class="card">
+                        <div class="card-body text-center" style="padding: var(--space-2xl);">
+                            <p style="color: var(--error);">Failed to load invoices: ${error.message}</p>
+                            <button class="btn btn-secondary mt-2" onclick="loadInvoices()">
+                                Try Again
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // Generate test invoice
+        async function generateTestInvoice() {
+            showToast('Generating test invoice...', 'info');
+
+            try {
+                const response = await api.post('/metering/invoices/generate-test/', {});
+                showToast('Test invoice generated successfully!', 'success');
+                // Reload invoices
+                await loadInvoices();
+            } catch (error) {
+                if (error.message.includes('already exists')) {
+                    showToast('Invoice for this period already exists', 'warning');
+                } else if (error.message.includes('No active subscription')) {
+                    showToast('Please subscribe to a plan first', 'error');
+                } else {
+                    showToast('Failed to generate invoice: ' + error.message, 'error');
+                }
+            }
+        }
+
+        // Download invoice PDF
+        async function downloadInvoice(invoiceId, invoiceNumber) {
+            showToast('Preparing invoice download...', 'info');
+
+            try {
+                await api.downloadFile(
+                    `/metering/invoices/${invoiceId}/download/`,
+                    `${invoiceNumber}.pdf`
+                );
+                showToast('Invoice downloaded successfully', 'success');
+            } catch (error) {
+                showToast('Failed to  download invoice: ' + error.message, 'error');
+            }
+        }
+
+        // Initialize
+        loadUserInfo();
+        loadInvoices();
+    </script>
+</body>
+
+</html>

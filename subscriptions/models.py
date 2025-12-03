@@ -13,7 +13,32 @@ class Feature(models.Model):
 class Plan(models.Model):
     name = models.CharField(max_length=100, db_index=True)
     price = models.DecimalField(max_digits=10, decimal_places=2)
-    billing_period = models.CharField(max_length=20, choices=[('monthly', 'Monthly'), ('yearly', 'Yearly')], default='monthly')
+    billing_period = models.CharField(
+        max_length=20, 
+        choices=[
+            ('monthly', 'Monthly'), 
+            ('yearly', 'Yearly'),
+            ('hourly', 'Hourly'),
+            ('minute', 'Per Minute')
+        ], 
+        default='monthly'
+    )
+    # Overage billing: price per unit over the limit
+    overage_price = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        default=0,
+        help_text="Price per unit when usage exceeds limit (0 = no overage billing)"
+    )
+    # Rate limiting: max calls per time window (in seconds)
+    rate_limit = models.IntegerField(
+        default=0,
+        help_text="Max calls per rate_limit_window seconds (0 = no rate limiting)"
+    )
+    rate_limit_window = models.IntegerField(
+        default=60,
+        help_text="Time window in seconds for rate limiting (default: 60 = 1 minute)"
+    )
     features = models.ManyToManyField(Feature, through='PlanFeature')
 
     def __str__(self):

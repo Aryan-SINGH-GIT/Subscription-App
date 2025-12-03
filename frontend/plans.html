@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subscription Plans - Subscription Engine</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/animations.css">
+</head>
+
+<body>
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="container navbar-content">
+            <div class="navbar-brand">Subscription Engine</div>
+            <ul class="navbar-menu">
+                <li><a href="index.html">Dashboard</a></li>
+                <li><a href="webhooks.html">Webhooks</a></li>
+                <li><a href="invoices.html">Invoices</a></li>
+                <li><a href="api-test.html">API Testing</a></li>
+                <li><span id="user-display" style="color: var(--text-secondary);"></span></li>
+                <li><button class="btn btn-secondary btn-sm" onclick="logout()">Logout</button></li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="page-header">
+            <h1 class="page-title animate-fadeInDown">Subscription Plans</h1>
+            <p class="page-subtitle animate-fadeInDown" style="animation-delay: 0.1s;">
+                Choose the plan that fits your needs
+            </p>
+        </div>
+
+        <div id="plans-container" class="grid grid-3">
+            <!-- Plans will be loaded here -->
+            <div class="shimmer" style="height: 400px; border-radius: var(--radius-lg);"></div>
+            <div class="shimmer" style="height: 400px; border-radius: var(--radius-lg);"></div>
+            <div class="shimmer" style="height: 400px; border-radius: var(--radius-lg);"></div>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/auth.js"></script>
+    <script>
+        // Check authentication
+        if (!requireAuth()) {
+            throw new Error('Not authenticated');
+        }
+
+        let currentPlanId = null;
+
+        // Load user info and current subscription
+        async function loadContext() {
+            try {
+                const user = await api.get('/auth/profile/');
+                document.getElementById('user-display').textContent = user.username;
+
+                // Get current subscription to know which plan is active
+                try {
+                    const sub = await api.get('/subscriptions/subscribe/');
+                    currentPlanId = sub.plan.id; // Corrected: sub.plan is an object, need ID
+                } catch (e) {
+                    console.log('No active subscription');
+                }
+
+                loadPlans();
+            } catch (error) {
+                console.error('Failed to load context:', error);
+            }
+        }
+
+        // Load plans
+        async function loadPlans() {
+            const container = document.getElementById('plans-container');
+
+            try {
+                const plans = await api.get('/subscriptions/plans/');
+
+                container.innerHTML = plans.map((plan, index) => {
+                    const isCurrent = plan.id === currentPlanId;
+
+                    // Find API call limit feature (corrected feature code)
+                    const apiFeature = plan.features.find(f => f.feature_code === 'api_calls');
+                    const apiLimit = apiFeature ? (apiFeature.limit === -1 ? 'Unlimited' : `${apiFeature.limit} calls`) : 'N/A';
+                    
+                    // Build features list
+                    const features = [];
+                    
+                    // Add API calls feature
+                    if (apiFeature) {
+                        if (apiFeature.limit === -1) {
+                            features.push('Unlimited API calls');
+                        } else {
+                            features.push(`${apiFeature.limit} API calls/month`);
+                        }
+                    } else {
+                        features.push('API calls included');
+                    }
+                    
+                    // Add rate limiting info if applicable
+                    if (plan.rate_limit > 0) {
+                        features.push(`${plan.rate_limit} calls per ${plan.rate_limit_window} seconds (rate limited)`);
+                    }
+                    
+                    // Add overage info if applicable
+                    if (plan.overage_price > 0) {
+                        features.push(`₹${plan.overage_price} per extra call (overage billing)`);
+                    }
+                    
+                    // Standard features
+                    features.push('Webhook Access');
+                    features.push('Analytics Dashboard');
+
+                    return `
+                        <div class="card hover-lift animate-fadeInUp stagger-item ${isCurrent ? 'border-primary' : ''}" 
+                             style="animation-delay: ${index * 0.1}s; position: relative; overflow: hidden;">
+                            ${isCurrent ? '<div class="badge badge-primary" style="position: absolute; top: 1rem; right: 1rem;">Current Plan</div>' : ''}
+                            
+                            <div class="card-header text-center">
+                                <h3 class="card-title" style="font-size: 1.5rem; margin-bottom: 0.5rem;">${plan.name}</h3>
+                                <div style="font-size: 2rem; font-weight: 700; color: var(--primary);">
+                                    ₹${plan.price}<span style="font-size: 1rem; color: var(--text-secondary); font-weight: 400;">/${plan.billing_period}</span>
+                                </div>
+                            </div>
+                            
+                            <div class="card-body">
+                                <ul style="list-style: none; padding: 0; margin-bottom: var(--space-xl);">
+                                    ${features.map(feature => `
+                                        <li class="flex items-center gap-2 mb-2">
+                                            <span style="color: var(--success);">✓</span>
+                                            <span style="color: var(--text-secondary);">${feature}</span>
+                                        </li>
+                                    `).join('')}
+                                </ul>
+
+                                <button 
+                                    class="btn ${isCurrent ? 'btn-secondary' : 'btn-primary'} w-100"
+                                    onclick="${isCurrent ? '' : `changePlan(${plan.id}, '${plan.name}')`}"
+                                    ${isCurrent ? 'disabled' : ''}
+                                >
+                                    ${isCurrent ? 'Current Plan' : 'Subscribe'}
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+            } catch (error) {
+                container.innerHTML = `
+                    <div class="card" style="grid-column: 1 / -1;">
+                        <div class="card-body text-center">
+                            <p style="color: var(--error);">Failed to load plans: ${error.message}</p>
+                            <button class="btn btn-secondary mt-2" onclick="loadPlans()">Try Again</button>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // Subscribe to a plan (for new users) or change plan (for existing users)
+        async function changePlan(planId, planName) {
+            const isNewSubscription = !currentPlanId;
+            const action = isNewSubscription ? 'subscribe to' : 'switch to';
+            
+            if (!confirm(`Are you sure you want to ${action} the ${planName} plan?`)) {
+                return;
+            }
+
+            // Find the button and show loading
+            const buttons = document.querySelectorAll('button');
+            buttons.forEach(b => b.disabled = true);
+            showToast(isNewSubscription ? 'Subscribing to plan...' : 'Processing plan change...', 'info');
+
+            try {
+                let endpoint, payload;
+                
+                if (isNewSubscription) {
+                    // New user subscription - use subscribe endpoint
+                    endpoint = '/subscriptions/subscribe/';
+                    payload = { plan_id: planId };
+                } else {
+                    // Existing user - use change-plan endpoint
+                    endpoint = '/subscriptions/change-plan/';
+                    payload = { plan_id: planId };
+                }
+
+                const response = await api.post(endpoint, payload);
+
+                // Show success message
+                const successMsg = isNewSubscription 
+                    ? `Successfully subscribed to ${planName}! Invoice has been generated.`
+                    : (response.message || `Successfully switched to ${planName}!`);
+                
+                showToast(successMsg, 'success');
+
+                // If invoice was created, show info
+                if (response.invoice) {
+                    setTimeout(() => {
+                        showToast('Check your Invoices page to download your invoice!', 'info');
+                    }, 2000);
+                }
+
+                // Refresh after a short delay
+                setTimeout(() => {
+                    window.location.href = 'index.html';
+                }, 2000);
+
+            } catch (error) {
+                let errorMsg = error.message || 'Failed to subscribe';
+                
+                // Handle specific error cases
+                if (errorMsg.includes('already has an active subscription')) {
+                    errorMsg = 'You already have an active subscription. Use "Change Plan" to switch.';
+                } else if (errorMsg.includes('No active subscription')) {
+                    errorMsg = 'Please subscribe to a plan first.';
+                }
+                
+                showToast(errorMsg, 'error');
+                buttons.forEach(b => b.disabled = false);
+            }
+        }
+
+        // Initialize
+        loadContext();
+    </script>
+</body>
+
+</html>

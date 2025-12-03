@@ -16,15 +16,38 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.views.generic import TemplateView
+from django.views.static import serve
 from core.views import ApiOverview
+from django.conf import settings
+from django.conf.urls.static import static
+import os
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/auth/', include('core.urls')),
     path('api/subscriptions/', include('subscriptions.urls')),
     path('api/metering/', include('metering.urls')),
-    path('', ApiOverview.as_view(), name='api-overview'),
+    path('api/', ApiOverview.as_view(), name='api-overview'),
+    
+    # Frontend routes
+    path('', TemplateView.as_view(template_name='frontend/index.html'), name='home'),
+    path('frontend/', TemplateView.as_view(template_name='frontend/index.html'), name='frontend-home'),
+    path('frontend/index.html', TemplateView.as_view(template_name='frontend/index.html'), name='frontend-index'),
+    path('frontend/plans.html', TemplateView.as_view(template_name='frontend/plans.html'), name='frontend-plans'),
+    path('frontend/invoices.html', TemplateView.as_view(template_name='frontend/invoices.html'), name='frontend-invoices'),
+    path('frontend/webhooks.html', TemplateView.as_view(template_name='frontend/webhooks.html'), name='frontend-webhooks'),
 ]
+
+# Serve static files (CSS, JS) from frontend directory
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    # Serve frontend static files in development
+    frontend_static = os.path.join(settings.BASE_DIR, 'frontend')
+    urlpatterns += [
+        path('frontend/css/<path:path>', serve, {'document_root': os.path.join(frontend_static, 'css')}),
+        path('frontend/js/<path:path>', serve, {'document_root': os.path.join(frontend_static, 'js')}),
+    ]
 
 
 

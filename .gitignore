@@ -2,66 +2,117 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyc
+*.pyo
+*.pyd
+.Python
 
 # Django
 *.log
 *.pot
-*.pyc
-*.pyo
-*.pyd
 db.sqlite3
-media/
-staticfiles/
+*.db
+*.sqlite
+*.sqlite3
 local_settings.py
 
-# Migrations (optional: keep in real projects, ignore for experimental)
-# */migrations/*
-# !*/migrations/__init__.py
+# Environment variables
+.env
+.env.local
+.env.production
+.env.*
+*.env
+
+# Media files (user uploads, generated files)
+media/
+media/**/*
+
+# Static files (collected static files)
+staticfiles/
+staticfiles/**/*
+
+# Logs
+logs/
+logs/**/*
+*.log
 
 # Virtual Environment
 venv/
 env/
 .venv/
 ENV/
+env.bak/
+venv.bak/
 
 # IDE / Editor
 .vscode/
-*.swp
 .idea/
+*.swp
+*.swo
+*~
 *.sublime-project
 *.sublime-workspace
+.project
+.pydevproject
+.settings/
 
 # OS
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+Desktop.ini
 
 # Redis dump (if created)
 dump.rdb
+*.rdb
 
 # Celery
 celerybeat-schedule
 celerybeat.pid
+celerybeat-schedule.*
 
 # Cache
 *.cache
 *.tmp
-
-# Environment Variables / Secrets
-.env
-*.env
-.env.*
+.cache/
+.pytest_cache/
 
 # Tests / Coverage
 .coverage
+.coverage.*
 htmlcov/
-pytest_cache/
+.pytest_cache/
+.tox/
+.hypothesis/
+coverage.xml
+*.cover
 
 # Python packaging
 build/
 dist/
 *.egg-info/
+.eggs/
+*.egg
+MANIFEST
 
-# JetBrains
-.idea/
-``
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Postman collections (optional - uncomment if you don't want to commit)
+# *.postman_collection.json
 
