@@ -242,6 +242,7 @@ class GenerateTestInvoiceView(APIView):
         from django.core.files.base import ContentFile
         from dateutil.relativedelta import relativedelta
         from decimal import Decimal
+        import random
         
         user = request.user
         subscription = Subscription.objects.filter(user=user, active=True).first()
@@ -286,6 +287,32 @@ class GenerateTestInvoiceView(APIView):
         # Create invoice in transaction
         with transaction.atomic():
             invoice_number = generate_invoice_number(user.id, today)
+            
+            # Check if invoice with this number already exists and make it unique
+            if Invoice.objects.filter(invoice_number=invoice_number).exists():
+                # Add microseconds and random component to ensure uniqueness
+                now = timezone.now()
+                timestamp_ms = int(now.timestamp() * 1000000)  # Include microseconds
+                random_suffix = random.randint(1000, 9999)
+                invoice_number = f"{invoice_number}-{timestamp_ms}-{random_suffix}"
+            
+            # Double-check uniqueness (race condition protection)
+            max_retries = 5
+            retry_count = 0
+            original_number = invoice_number
+            while Invoice.objects.filter(invoice_number=invoice_number).exists() and retry_count < max_retries:
+                now = timezone.now()
+                timestamp_ms = int(now.timestamp() * 1000000)
+                random_suffix = random.randint(10000, 99999)
+                invoice_number = f"{original_number}-{timestamp_ms}-{random_suffix}"
+                retry_count += 1
+            
+            if retry_count >= max_retries:
+                logger.error(f"Could not generate unique invoice number after {max_retries} retries")
+                return Response(
+                    {'detail': 'Could not generate unique invoice number. Please try again.'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
             
             invoice = Invoice.objects.create(
                 user=user,

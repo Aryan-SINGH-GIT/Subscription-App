@@ -102,10 +102,30 @@ def create_subscription_invoice(subscription, invoice_type='subscription'):
         with transaction.atomic():
             invoice_number = generate_invoice_number(user.id, today)
             
-            # Check if invoice with this number already exists
+            # Check if invoice with this number already exists and make it unique
             if Invoice.objects.filter(invoice_number=invoice_number).exists():
-                # Add timestamp to make it unique
-                invoice_number = f"{invoice_number}-{int(timezone.now().timestamp())}"
+                # Add microseconds and random component to ensure uniqueness
+                import random
+                now = timezone.now()
+                timestamp_ms = int(now.timestamp() * 1000000)  # Include microseconds
+                random_suffix = random.randint(1000, 9999)
+                invoice_number = f"{invoice_number}-{timestamp_ms}-{random_suffix}"
+            
+            # Double-check uniqueness (race condition protection)
+            max_retries = 5
+            retry_count = 0
+            original_number = invoice_number
+            while Invoice.objects.filter(invoice_number=invoice_number).exists() and retry_count < max_retries:
+                import random
+                now = timezone.now()
+                timestamp_ms = int(now.timestamp() * 1000000)
+                random_suffix = random.randint(10000, 99999)
+                invoice_number = f"{original_number}-{timestamp_ms}-{random_suffix}"
+                retry_count += 1
+            
+            if retry_count >= max_retries:
+                logger.error(f"Could not generate unique invoice number after {max_retries} retries")
+                return None
             
             invoice = Invoice.objects.create(
                 user=user,
