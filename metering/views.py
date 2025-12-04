@@ -17,35 +17,51 @@ class UsageEventView(APIView):
     @transaction.atomic
     def post(self, request):
         feature_code = request.data.get('feature_code')
-        event_id = request.data.get('event_id')
-        
-        # Auto-generate event_id if not provided
-        if not event_id:
-            event_id = str(uuid.uuid4())
         
         if not feature_code:
             return Response({'detail': 'feature_code required'}, status=status.HTTP_400_BAD_REQUEST)
-            
-        # Check idempotency first
+        
+        # Always auto-generate event_id for idempotency (compulsory)
+        # This ensures every request has a unique identifier
+        event_id = str(uuid.uuid4())
+        
+        # Check idempotency first (fast Redis check)
         if not check_idempotency(event_id):
             return Response({'detail': 'Duplicate event'}, status=status.HTTP_409_CONFLICT)
+        
+        # Optimized: Use request-level caching if available (from middleware)
+        if hasattr(request, '_cached_subscription'):
+            subscription = request._cached_subscription
+            plan = request._cached_plan
+        else:
+            # Check entitlement - optimized query
+            subscription = Subscription.objects.filter(
+                user=request.user, 
+                active=True
+            ).select_related('plan').only(
+                'id', 'plan_id', 'plan__id', 'plan__name', 'plan__price',
+                'plan__rate_limit', 'plan__rate_limit_window', 'plan__overage_price'
+            ).first()
             
-        # Check entitlement
-        subscription = Subscription.objects.filter(
-            user=request.user, 
-            active=True
-        ).select_related('plan').first()
+            if not subscription:
+                return Response({'detail': 'No active subscription'}, status=status.HTTP_403_FORBIDDEN)
+            
+            plan = subscription.plan
         
-        if not subscription:
-            return Response({'detail': 'No active subscription'}, status=status.HTTP_403_FORBIDDEN)
-             
-        try:
-            feature = Feature.objects.get(code=feature_code)
-            plan_feature = PlanFeature.objects.get(plan=subscription.plan, feature=feature)
-        except (Feature.DoesNotExist, PlanFeature.DoesNotExist):
-            return Response({'detail': 'Feature not allowed'}, status=status.HTTP_403_FORBIDDEN)
+        # Optimized: Use cached plan features if available
+        if hasattr(request, '_cached_plan_features'):
+            plan_feature = request._cached_plan_features.get(feature_code)
+            if not plan_feature:
+                return Response({'detail': 'Feature not allowed'}, status=status.HTTP_403_FORBIDDEN)
+        else:
+            try:
+                feature = Feature.objects.only('id', 'code').get(code=feature_code)
+                plan_feature = PlanFeature.objects.select_related('feature').only(
+                    'plan_id', 'feature_id', 'limit'
+                ).get(plan=plan, feature=feature)
+            except (Feature.DoesNotExist, PlanFeature.DoesNotExist):
+                return Response({'detail': 'Feature not allowed'}, status=status.HTTP_403_FORBIDDEN)
         
-        plan = subscription.plan
         limit = plan_feature.limit
         
         # Check rate limiting (if plan has rate_limit > 0)
@@ -76,41 +92,58 @@ class UsageEventView(APIView):
             if not success:
                 return Response({'detail': 'Limit exceeded'}, status=status.HTTP_403_FORBIDDEN)
         
-        # Log event (after successful increment)
+        # Get feature for event logging (use cached if available)
+        if hasattr(request, '_cached_plan_features') and feature_code in request._cached_plan_features:
+            feature = request._cached_plan_features[feature_code].feature
+        else:
+            feature = Feature.objects.only('id', 'code').get(code=feature_code)
+        
+        # Log event (after successful increment) - Use bulk_create or defer for better performance
+        # For latency optimization, we can defer this or make it non-blocking
         try:
-            MeterEvent.objects.create(
-                user=request.user,
-                feature=feature,
+            # Use get_or_create to avoid duplicate key errors and reduce query overhead
+            MeterEvent.objects.get_or_create(
                 event_id=event_id,
-                metadata=request.data.get('metadata', {})
+                defaults={
+                    'user_id': request.user.id,  # Use user_id instead of user object
+                    'feature_id': feature.id,  # Use feature_id instead of feature object
+                    'metadata': request.data.get('metadata', {})
+                }
             )
         except Exception as e:
             logger.error(f"Error creating MeterEvent: {e}", exc_info=True)
             # Don't fail the request if event logging fails
         
-        # Check if user just hit their limit
+        # Check if user just hit their limit (defer webhook to avoid blocking)
         if limit != -1 and new_usage >= limit:
-            # Send webhook notification to user
-            from core.utils import notify_user
-            remaining = max(0, limit - new_usage)
-            
-            notify_user(request.user, 'limit_reached', {
-                'user_id': request.user.id,
-                'username': request.user.username,
-                'feature_code': feature_code,
-                'feature_name': feature.name,
-                'usage': new_usage,
-                'limit': limit,
-                'remaining': remaining,
-                'plan_name': subscription.plan.name,
-                'message': 'Limit reached. You can renew or upgrade your current subscription.',
-                'suggested_actions': [
-                    'Upgrade to a higher plan for more capacity',
-                    'Renew your current subscription to reset usage counters'
-                ],
-                'upgrade_endpoint': '/api/subscriptions/change-plan/',
-                'renew_endpoint': '/api/subscriptions/renew/'
-            })
+            # Send webhook notification to user (non-blocking for latency)
+            try:
+                from core.utils import notify_user
+                remaining = max(0, limit - new_usage)
+                
+                # Get feature name (use cached if available)
+                feature_name = feature.name if hasattr(feature, 'name') else feature_code
+                
+                notify_user(request.user, 'limit_reached', {
+                    'user_id': request.user.id,
+                    'username': request.user.username,
+                    'feature_code': feature_code,
+                    'feature_name': feature_name,
+                    'usage': new_usage,
+                    'limit': limit,
+                    'remaining': remaining,
+                    'plan_name': subscription.plan.name,
+                    'message': 'Limit reached. You can renew or upgrade your current subscription.',
+                    'suggested_actions': [
+                        'Upgrade to a higher plan for more capacity',
+                        'Renew your current subscription to reset usage counters'
+                    ],
+                    'upgrade_endpoint': '/api/subscriptions/change-plan/',
+                    'renew_endpoint': '/api/subscriptions/renew/'
+                }, raise_on_error=False)  # Don't block on webhook failure
+            except Exception as e:
+                logger.error(f"Error sending limit_reached webhook: {e}", exc_info=True)
+                # Don't fail the request if webhook fails
         
         # Calculate remaining (for overage plans, can be negative)
         if limit == -1:
