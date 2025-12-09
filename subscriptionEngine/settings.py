@@ -102,6 +102,7 @@ CELERY_BEAT_SCHEDULE = {
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # Must be after SecurityMiddleware
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -214,6 +215,10 @@ if (BASE_DIR / 'static').exists():
 # Add frontend directory for static files (CSS, JS)
 if (BASE_DIR / 'frontend').exists():
     STATICFILES_DIRS.append(BASE_DIR / 'frontend')
+
+# WhiteNoise configuration for serving static files in production
+# Using CompressedStaticFilesStorage for better compatibility (doesn't require manifest file)
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
 
 # Media files (User uploads like PDFs)
 MEDIA_URL = '/media/'
